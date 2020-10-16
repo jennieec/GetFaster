@@ -1,0 +1,68 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Página de Jennito</title>
+    <link rel="shortcut icon" href="" type ="image/x-icon">
+    <link rel="stylesheet" href="{{url_for('static',filename='tiamo.css')}}">
+    
+<body>
+    <header>
+        <nav>
+           
+           
+            <a href="/login"> Cerrar Sesión  </a> <br>
+        </nav>
+
+       <section class="textos-header">
+            <h1> Datos aspirantes</h1>
+            <button type="submit" type="file"><a href="inicio">Actualizar </a></button>
+       </section>
+       <div class="wave" style="height: 150px; overflow: hidden;" ><svg viewBox="0 0 500 150" preserveAspectRatio="none" style="height: 100%; width: 100%;"><path d="M0.00,49.98 C149.99,150.00 349.20,-49.98 500.00,49.98 L500.00,150.00 L0.00,150.00 Z" style="stroke: none; fill: rgb(255, 255, 255);"></path></svg></div>
+
+
+        </div>
+    </header>
+
+    
+    <main>
+        <section>
+            <section class="clientes contenedor">
+                 <div class="cards">
+                    <div class="card">
+                        <div class="contenido-texto-card">
+                            <ul class="list-group">
+                              {% for evento in eventos %}
+                              <li class="list-group">
+                                {{ evento.1 }} 
+                                {{ evento.2 }}
+                                {{ evento.3 }}
+                                {{ evento.4 }}
+                                {{ evento.5 }}
+                                {{ evento.6 }}
+                                {{ evento.7 }}
+                                <button type="submit" type="file"><a href="Contrato">Crear Contrato</a></button>
+                                <form action="/Contrato" method="POST" enctype="multipart/form-data">
+                                    <label for="Sube el Contrato"></label>
+                                    <input type="file" name="archi">
+                                    <button type="button" type="file"><a href="inicio">Firmar Contrato</a></button>
+                                    <button type="button" type="file"><a href="EnviarPDF">Enviar Contrato Firmado</a></button>
+                            </li>
+                              {% else %}
+                              <li><em>No hay eventos!</em></li>
+                            {% endfor %}
+                            </ul>
+                        </div>
+                    </div> 
+                 </div>   
+
+            </section> 
+            
+    
+        </section>
+    </main>    
+
+</body>
+</html>

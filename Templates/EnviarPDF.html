@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eliminar</title>
+    <link rel="shortcut icon" href="" type ="image/x-icon">
+    <link rel="stylesheet" href="{{url_for('static',filename='tiamo.css')}}">
+    
+<body>
+    <header>
+        <nav>
+        </nav>
+
+       <section class="textos-header">
+            <h1> Para enviar PDF inserta tu correo </h1>
+       </section>
+       <div class="wave" style="height: 150px; overflow: hidden;" ><svg viewBox="0 0 500 150" preserveAspectRatio="none" style="height: 100%; width: 100%;"><path d="M0.00,49.98 C149.99,150.00 349.20,-49.98 500.00,49.98 L500.00,150.00 L0.00,150.00 Z" style="stroke: none; fill: rgb(255, 255, 255);"></path></svg></div>
+
+
+        </div>
+    </header>
+
+    <main>
+        
+
+        <section>
+            <section class="clientes contenedor">
+                <div class="now">
+                    <div class="contenido-texto-card">
+                        <form action="/EnviarPDF" method="POST">
+                            <div class="form-group">
+                                <label>Correo: </label>
+                                <input name="Emial" type="text" id="Email" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <button name="Botton" type="submit" class="btn btn-primary">Register</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+            </section> 
+        </section>
+    </main>    
+
+</body>
+</html>
