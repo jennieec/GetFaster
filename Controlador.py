@@ -18,10 +18,6 @@ app.secret_key = 'matangalachanga'
 app.config['UPLOAD_PATH'] = 'ArchivosPDF'
 app.config['UPLOAD_EXTENSIONS'] = ['.pdf']
 
-@app.route("/")
-def hola():
-    return render_template("Login.html")
-
 @app.route("/inicio")
 def select():
     try:
