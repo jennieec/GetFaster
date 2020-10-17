@@ -20,7 +20,7 @@ app.config['UPLOAD_EXTENSIONS'] = ['.pdf']
 
 @app.route("/")
 def hola():
-    return render_template("login.html")
+    return render_template("Login.html")
 
 @app.route("/inicio")
 def select():
