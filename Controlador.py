@@ -1,151 +1,334 @@
-from flask import Flask, render_template, request, json, url_for, session, redirect, send_from_directory
+from flask import Flask, render_template, request, json, url_for, session, redirect, g
+import requests
 from flaskext.mysql import MySQL
 import bcrypt
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import login_user, logout_user, login_required
 import os
 import Modelo as Modelo
-from PyPDF2 import PdfFileReader
-from pathlib import Path
-import smtplib
-import time
-import re
+import ModeloContrato as ModeloContrato
+import imaplib
 import email
-from reportlab.pdfbase import pdfmetrics
-from werkzeug.utils import secure_filename
+import time
+from bs4 import BeautifulSoup
+import re
+import jinja2
+import ctypes
+
 
 app = Flask(__name__)
-app.secret_key = 'matangalachanga'
 
-app.config['UPLOAD_PATH'] = 'ArchivosPDF'
-app.config['UPLOAD_EXTENSIONS'] = ['.pdf']
+#contraseña super secreta
+app.secret_key ='matangalachanga'
 
-@app.route("/inicio")
-def select():
-    try:
-        consulta = Modelo.SelectAll()
-        return render_template("jennito.html", eventos=consulta)
-    except Exception as e:
-        print(str(e))
-        return json.dumps({'errooooooror':str(e)})  
+#conectar a la base de datos
+app.config['MYSQL_DATABASE_USER'] = 'sepherot_jennifer'
+app.config['MYSQL_DATABASE_PASSWORD'] = 'AW4ur5mHBR'
+app.config['MYSQL_DATABASE_DB'] = 'sepherot_jenniferBD'
+app.config['MYSQL_DATABASE_HOST'] = 'nemonico.com.mx'
+mysql = MySQL()
+mysql.init_app(app)
 
+#abrir los archivos
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['UPLOAD_FOLDER'] ='gofaster'
+app.config['UPLOAD_FOLDER2'] ='./static'
+app.config['UPLOAD_FOLDER3'] ='./static'
+app.config['UPLOAD_FOLDER4'] ='./static'
+app.config['UPLOAD_EXTENSIONS'] = '.pdf', '.png' , '.jpeg'
+app.config['SESSION_TYPE'] = 'filesystem'
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    try:
-        if request.method == 'GET':
-            return render_template("Login.html")
-        else:
-            _e = request.form.get('Email')
-            _p = request.form.get('Password').encode('utf-8')
-            
-            if _e and _p:
-                Modelo.validarUsuario( _e, _p)
-                return render_template("jennito.html")
-                #return redirect(url_for('inicio'))
-            else:
-                return "Error correo y contra"
-    except Exception as e:
-        print(str(e))
-        return json.dumps({'errooooooror':str(e)})  
+#para guardar el usuario
+@app.before_request
+def before_request():
+   g.user = None
+   if 'name' in session:
+      g.user = Modelo.buscarU(session['name'])
 
+#pagina inicial
+@app.route("/")
+def index():
+    return render_template("login.html")
 
+#pagina de registro, solo para nosotras  
 @app.route('/register', methods=['GET', 'POST'])
 def Register():
-    try:
-        if request.method == 'GET':
-            return render_template("Register.html")
-        else:
-            _n = request.form.get('Name')
-            _l = request.form.get('Lastname')
-            _e = request.form.get('Email')
-            _p = request.form.get('Password').encode('utf-8')
-            hash_p = bcrypt.hashpw(_p, bcrypt.gensalt())
-            if _n and _l and _e and hash_p:
-                Modelo.insertarUsuario(_n, _l, _e, hash_p)
-                #return render_template("Login.html", session=consulta)
+    if request.method == "POST":
+        _n = request.form['Name']
+        _l = request.form['Lastname']
+        _e = request.form['Email']
+        _p = request.form['Password']
+        #.encode('utf-8')
+        #hash_p = bcrypt.hashpw(_p, bcrypt.gensalt())
+        
+        #insertar usurio
+        if _n and _l and _e and _p:
+                Modelo.registro(_n, _l, _e, _p)
                 return redirect(url_for('login'))
-            else:                
-                return json.dumps({'html':'<span>No se pudo hacer login</span>'})
-        
-    except Exception as e:
-        print(str(e))
-        return json.dumps({'eeeeeeerror':str(e)})
 
-@app.route('/Aspirante', methods=['GET', 'POST'])
-def Aspirante():
-    try:
-        if request.method == 'GET':
-            return render_template("Aspirante.html")
+        #validar que no exista
+        cur = mysql.get_db().cursor()
+        cur.execute('SELECT * FROM USERS WHERE email=%s', (_e))
+        val = cur.fetchone()
+        print(val)
+        cur.close()
+
+        #si el usuario existe
+        if len(val) is not 0:
+            if _e == val[3]:
+                Modelo.entidades(_e,'REGISTER.FAIL', 'registro fallido')
+                return 'Error: Usuario ya existente'
+
+        #si el usuario no existe
         else:
-            _no = request.form.get('Nombre')
-            _ap = request.form.get('Apellidop')
-            _am = request.form.get('Apellidom')
-            _ed = request.form.get('Edad')
-            _po = request.form.get('Puesto')
-            _aa = request.form.get('Area')
-            _fa = request.form.get('Fecha')
-            if _no and _ap and _am and _ed and _po and _aa and _fa:
-                Modelo.insertarAspirante(_no, _ap, _am, _ed, _po, _aa, _fa)
-                return redirect(url_for('login'))
-            else:                
-                return json.dumps({'html':'<span>No se ingresaron los los datos</span>'})
+            Modelo.registro(_n, _l, _e, _p)
+            session['name'] = val[1]
+            session['email'] = val[3]
+            Modelo.entidades(session['email'],'REGISTER', 'registro exitoso')
+            return render_template('Login.html')      
+    else:
+        return render_template('Register.html')
+
+#pagina de iniciar sesion
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if g.user:
+        return redirect(url_for('aspirantes'))
+    if request.method == 'POST':
+        session.pop('name', None)
+        _e = request.form['Email']
+        _p = request.form['Password']
+        #print(_e)
+        #print(_p)
         
-    except Exception as e:
-        print(str(e))
-        return json.dumps({'eeeeeeerror':str(e)})
+        if (_e and _p):
+            cursor = mysql.get_db().cursor()
+            cursor.execute('SELECT * FROM USERS WHERE email=%s', (_e))
+            user = cursor.fetchone()
+            #print(user)
+            cursor.close()
+            
+            #si el usuario existe
+            if len(user) > 0:
+                #si la contraseña y el usuario es igual a la BD
+                if _p == user[4] and _e == user[3]:     
+                    session['id'] = user [0]           
+                    session['name'] = user[1]
+                    #print(session['name'])
+                    session['email'] = user[3]
+                    #print(session['email'])
+                    time.sleep(.5)
+                    Modelo.entidades(session['email'],'LOGIN', 'login exitoso')
+                    return redirect(url_for('aspirantes'))
+                    time.sleep(.5)
+                #si la contraseña es diferente
+                else:
+                    Modelo.entidades(_e,'LOGIN.FAIL', 'login fallido')
+                    return render_template('error2.html')
+                    #error contraseña o usuario incorrectos
+    return render_template('Login.html')
+ 
+#pagina que muestra el error (página en construcción para login)
+@app.route("/error")
+def error():
+    return render_template("error.html")
 
-@app.route("/firmar")
-def FirmarPDF():
-    try:
-        consulta = Modelo.Firmar()
-        return render_template("jennito.html", eventos=consulta)
-    except Exception as e:
-        print(str(e))
-        return json.dumps({'errooooooror':str(e)})  
+#pagina para recuperar contraseña si se olvida
+@app.route("/recuperar",methods=['GET', 'POST'])
+def recuperar():
+    if request.method == 'POST':
+        _e = request.form['Email']
+        Modelo.entidades(_e,'RECUPERAR CONTRASEÑA', 'solicitó recuperar su contraseña')
+        time.sleep(.5)
+        return redirect(url_for('login'))
+    return render_template("recuperar.html")
 
 
-@app.route('/EnviarPDF',  methods=['GET', 'POST'])
-def EnviarPDF():
-    try:
-        if request.method == 'GET':
-            return render_template("EnviarPDF.html")
-        else:
-            _e = request.form.get('Email')
-            if _e:
-                Modelo.EnviarPDF(_e)
-                return redirect(url_for('inicio'))
-            else:     
-                return render_template("jennitoU.html")     
-   
-    except Exception as e:
-        print(str(e))
-        return json.dumps({'eeeeeeerror':str(e)})
+#AQUI EMPIEZA LO DIFICIL
 
-
-
-app.route('/Contrato',methods=["POST","GET"])
-def Contrato():
-    try:
-        if request.method == 'GET':
-            return render_template("Layout.html")
-        else:
-            _no = request.form.get('Nombre')
-            _ap = request.form.get('Apellidop')
-            _am = request.form.get('Apellidom')
-            _ed = request.form.get('Edad')
-            _po = request.form.get('Puesto')
-            _aa = request.form.get('Area')
-            _fa = request.form.get('Fecha')
-            if _no and _ap and _am and _ed and _po and _aa and _fa:
-                Modelo.CrearPDF(_no, _ap, _am, _ed, _po, _aa, _fa)
-                return redirect(url_for('inicio'))
-            else:                
-                return json.dumps({'html':'<span>No se ingresaron los los datos</span>'})
+#pagina donde se ven todos los aspirantes
+@app.route('/inicio', methods=['GET', 'POST'])
+def aspirantes():
+        #aqui se visualizan todos los aspirantes
+        consulta = Modelo.select()
+        Modelo.entidades(session['email'],'MOSTRAR ASPIRANTES', 'mostrar aspirantes exitoso')
+        return render_template("aspirants.html", eventos=consulta)
         
-    except Exception as e:
-        print(str(e))
-        return json.dumps({'eeeeeeerror':str(e)})
 
-if __name__ == "__main__":
-    app.run(debug=True)
+#pagina donde se selecciona solo un aspirante
+@app.route('/aspirante', methods=['GET', 'POST'])
+def aspirante():
+    #aqui se muestra solo un aspirante
+    if request.method == 'POST':
+       _id = request.form['id']
+       consulta = Modelo.buscarU2(_id)
+       Modelo.entidades(session['email'],'BUSCAR ID', 'busqueda exitosa')
+       return render_template("uno.html", eventos=consulta)
+    else:
+        Modelo.entidades(session['email'],'BUSCAR ID.FAIL', 'busqueda fallida')
+        return render_template('error.html')
+    
+    return render_template('todos.html')
+
+
+
+#validar las identificaciones   
+@app.route("/validar",methods=['GET', 'POST'] )
+def subdocumentos():
+   Modelo.entidades(session['email'],'INGRESAR DOCUMENTOS', 'ingreso a validar identificaciones')
+   return render_template("validar.html")
+
+
+#identificaciones no validadas
+@app.route('/nonval')
+def nonval():
+    Modelo.entidades(session['email'],'VALIDACION.FAIL', 'validacion fallida')
+    return render_template("error3.html")
+
+#identificaciones validadas
+@app.route("/verificados")
+def verificados():
+    Modelo.entidades(session['email'],'VALIDAR', 'validacion exitosa')
+    return render_template("verificados.html")
+
+#ingresar INE
+@app.route('/Ine',methods= ['POST','GET'])
+def Ine():
+        #para comprobar que sea la misma persona
+        busqueda= Modelo.buscarU2(session['id'])
+        #aqui se abre el documento
+        files = request.files.getlist('files[]')
+        errors = {}
+        success = False
+        for file in files:
+         if file:
+            filename = secure_filename(file.filename)
+            _nombrearchivo=filename
+            #se llama a la funcion que hara el parseo de la foto
+            Modelo.INE(busqueda,_nombrearchivo)  
+            file.save(os.path.join(app.config['UPLOAD_FOLDER2'], filename))
+            success = True
+
+        if success:
+            resp = json.jsonify({'message' : 'Files successfully uploaded'})
+            _nombrearchivo=filename
+            _urline="./static/"+filename
+            Modelo.ImagenATextoINE(busqueda,_urline)
+            resp.status_code = 201
+            Modelo.entidades(session['email'],'CARGAR INE', 'carga de INE exitoso')
+            #return resp
+            return redirect(url_for('verificados'))
+        else:
+            Modelo.entidades(session['email'],'CARGAR INE.FAIL', 'carga de INE fallido')
+            return redirect(url_for('nonval'))
+       #return render_template("validar.html")
+
+#ingresar COMPROBANTE
+@app.route('/COMPROBANTE',methods= ['POST','GET'])
+def COMPROBANTE():
+        #para comprobar que sea la misma persona
+        busqueda= Modelo.buscarU2(session['id'])
+        #aqui se abre el documento
+        files = request.files.getlist('files[]')
+        errors = {}
+        success = False
+        for file in files:
+         if file:
+            filename = secure_filename(file.filename)
+            _nombrearchivo=filename
+            #se llama a la funcion que hara el parseo de la foto
+            Modelo.COMPROBANTE(busqueda,_nombrearchivo)  
+            file.save(os.path.join(app.config['UPLOAD_FOLDER3'], filename))
+            success = True
+
+        if success:
+            resp = json.jsonify({'message' : 'Files successfully uploaded'})
+            _nombrearchivo=filename
+            _urline="./static/"+filename
+            Modelo.ImagenATextoCOMPROBANTE(busqueda,_urline)
+            resp.status_code = 201
+            Modelo.entidades(session['email'],'CARGAR COMPROBANTE', 'carga de COMPROBANTE exitoso')
+            return resp
+            return redirect(url_for('verificados'))
+        else:
+            Modelo.entidades(session['email'],'CARGAR COMPROBANTE.FAIL', 'carga de COMPROBANTE fallido')
+            return redirect(url_for('nonval'))
+       #return render_template("validar.html")
+
+
+#ingresar ESCOLARIDAD
+@app.route('/ESCOLARIDAD',methods= ['POST','GET'])
+def ESCOLARIDAD():
+        #para comprobar que sea la misma persona
+        busqueda= Modelo.buscarU2(session['id'])
+        #aqui se abre el documento
+        files = request.files.getlist('files[]')
+        errors = {}
+        success = False
+        for file in files:
+         if file:
+            filename = secure_filename(file.filename)
+            _nombrearchivo=filename
+            #se llama a la funcion que hara el parseo de la foto
+            Modelo.ESCOLARIDAD(busqueda,_nombrearchivo)  
+            file.save(os.path.join(app.config['UPLOAD_FOLDER4'], filename))
+            success = True
+
+        if success:
+            resp = json.jsonify({'message' : 'Files successfully uploaded'})
+            _nombrearchivo=filename
+            _urline="./static/"+filename
+            Modelo.ImagenATextoESCOLARIDAD(busqueda,_urline)
+            resp.status_code = 201
+            Modelo.entidades(session['email'],'CARGAR CERTIFICADO', 'carga de CERTIFICADO exitoso')
+            return resp
+            return redirect(url_for('verificados'))
+        else:
+            Modelo.entidades(session['email'],'CARGAR CERTIFICADO.FAIL', 'carga de CERTIFICADO fallido')
+            return redirect(url_for('nonval'))
+       #return render_template("validar.html")
+       
+
+#pagina donde se crea el PDF
+@app.route('/contrato', methods=['GET', 'POST'])
+def contrato():
+    if request.method == 'POST':
+        _n = request.form['Nombre']
+        _d = request.form['Domicilio']
+        _p = request.form['Puesto']
+        _a = request.form['Area']
+        _s = request.form['Sueldo']
+        _h = request.form['Horas']
+        _f = request.form['Fecha']
+        _t = request.form['Tipo']
+        
+        if (_n and _d and _p and _a and _s and _h and _f and _t):
+            ModeloContrato.PDF(_n, _d, _p, _a, _s, _h, _f, _t)
+            time.sleep(.5)
+            Modelo.entidades(session['email'],'CREAR PDF', 'creación del PDF exitosa')
+            return redirect(url_for('contrato2'))
+        else:
+            Modelo.entidades(session['email'],'CREAR PDF.FAIL', 'creación del PDF fallida')
+            return redirect(url_for('error'))    
+    return render_template('uno.html')
+
+#pagina para avisar que se creo el PDF
+@app.route('/contrato2')
+def contrato2():
+    return render_template('contrato2.html')
+
+#pagina para mandar el PDF por correo
+@app.route('/email')
+def emaild():
+    Modelo.entidades(session['email'],'ENVIAR PDF', 'envió del PDF exitoso')
+    Modelo.Firma()
+    return render_template('contratofirmado.html')
+
+#pagina para finalizar el proceso del aspirante (cuando ya esten sus identificaciones y contrato firmado)
+@app.route('/finalizar')
+def finalizar():
+    Modelo.entidades(session['email'],'FINALIZAR', 'finalizar el proceso exitoso')
+    return render_template('finalizado.html')
 
 
